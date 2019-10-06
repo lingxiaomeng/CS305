@@ -2,6 +2,7 @@ import mimetypes
 import os
 import socket
 import threading
+import chardet
 from urllib import parse
 
 err405 = [b'HTTP/1.0 405 Not Found\r\n', b'Connection: close\r\n', b'Content-Type:text/html; charset=utf-8\r\n',
@@ -19,7 +20,7 @@ def get_dir_html(dir_path):
     for file in os.listdir(dir_path):
         body += '<a href="%s">%s</a><br>' % (dir_path + '/' + file, file)
     body += '</pre><hr></body></html>'
-    content_length = 'Content-Length: %s\r\n' % str(len(body.encode()))
+    content_length = 'Content-Length: %s; charset=utf-8\r\n' % str(len(body.encode()))
     html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Content-Type:text/html; charset=utf-8\r\n',
             content_length.encode(), b'\r\n',
             body.encode(),
@@ -28,12 +29,15 @@ def get_dir_html(dir_path):
 
 
 def get_file_html(file_path):
-    print(mimetypes.guess_type(file_path))
+    # print(mimetypes.guess_type(file_path))  # 获取文件content-type
     file = open(file_path, 'rb')
-    content_type = 'Content-Type: %s \r\n' % str(mimetypes.guess_type(file_path)[0])
+    data = file.read()
+    # print(chardet.detect(data))
+    content_type = 'Content-Type: %s; charset=%s\r\n' % (
+        str(mimetypes.guess_type(file_path)[0]), chardet.detect(data)['encoding'])
     content_length = 'Content-Length: %s\r\n' % str(os.path.getsize(file_path))
     html = [b'HTTP/1.1 200 OK\r\n', b'Connection: close\r\n', content_type.encode(), content_length.encode(), b'\r\n',
-            file.read(),
+            data,
             b'\r\n']
     file.close()
     return html
@@ -58,26 +62,24 @@ class file_server(threading.Thread):
 
     def run(self):
         data = self.conn.recv(2048).decode().split('\r\n')
-        print(data)
+        # print(str(self.address) + ":" + str(data))
         head = data[0].split(' ')
-        res = err405
+        res = err405  # 默认返回405
         if len(head) > 0:
             if head[0] == 'GET':
                 file_path = '.' + head[1]
-                file_path = parse.unquote(file_path)
+                file_path = parse.unquote(file_path)  # 解析中文字符
                 res = do_get(file_path)
         for line in res:
             self.conn.send(line)
-        # print(res)
         self.conn.close()
+        print(str(self.address) + ":closed")
 
 
 if __name__ == "__main__":
-    # mimetypes.add_type('video/x-msvideo', '.avi')
-
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(('127.0.0.1', 80))
+        sock.bind(('127.0.0.1', 80))  # 监听在80端口
         sock.listen(10)
         while True:
             conn, address = sock.accept()
