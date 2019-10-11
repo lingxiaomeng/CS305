@@ -11,7 +11,6 @@ def get_dns_name(dns_message, start):
     while start <= len(dns_message):
         num = int(dns_message[start:start + 2], 16)
         if num == 0:
-            print(name)
             start = start + 2
             return name, start
         elif (num & 0xC0) == 0xC0:
@@ -39,6 +38,7 @@ class dnsSolve:
         #     field: None
         #     for field in ('ID', 'Flags', 'QR', 'OpCode', 'AA', 'TC', 'RD', 'RA', 'Z'
         #                   , 'RCode', 'QDCOUNT', 'ANCOUNT', 'NSCOUNT', 'ARCOUNT')}
+        self.DNS_message = dns_message
         self.ID = int(dns_message[0:4], 16)
         self.Flags = int((dns_message[4:8]), 16)
         self.QR = (self.Flags & 0x8000) >> 15
@@ -73,13 +73,17 @@ class dnsSolve:
             start = start + 20 + 2 * a_data_length
             self.Answers[i] = Answer(a_name, a_type, a_class, a_ttl, a_data_length, a_data)
 
-    def handle(self):
+    def handle(self, address):
         if self.QR == 0:
             print(time.time())
             for question in self.Questions.values():
                 print(question)
                 rr = RR(name=generate_name(question.QNAME), type=question.QTYPE, a_class=question.QCLASS)
-                print(rr)
+                for old_rr in db:
+                    if rr == old_rr:
+                        sock.sendto(bytes.fromhex(self.DNS_message), address)
+                        return
+                sock.sendto(bytes.fromhex(self.DNS_message), '8.8.8.8')
 
     def __str__(self):
         return str(self.__dict__)
@@ -92,9 +96,8 @@ if __name__ == "__main__":
         # sock.listen(10)
         while True:
             message, clientAddress = sock.recvfrom(2048)
-            print(message.hex())
-            dns_query = message.hex()
-            dns_solve = dnsSolve(dns_query)
+            # print(message.hex())
+            dns_solve = dnsSolve(message.hex())
             dns_solve.handle()
     except KeyboardInterrupt:
         exit()
