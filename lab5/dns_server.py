@@ -75,17 +75,22 @@ class dnsSolve:
 
     def handle(self, address):
         if self.QR == 0:
-            print(time.time())
+            # print(time.time())
             for question in self.Questions.values():
                 print(question)
                 rr = RR(name=question.QNAME_original, type=question.QTYPE, a_class=question.QCLASS)
                 for old_rr in db:
                     if rr == old_rr:
-                        sock.sendto(bytes.fromhex(self.DNS_message), address)
+                        clientSocket.sendto(bytes.fromhex(self.DNS_message), address)
                         break
                 else:
-                    sock.sendto(bytes.fromhex(self.DNS_message), ('8.8.8.8', 53))
+                    clientSocket.sendto(bytes.fromhex(self.DNS_message), ('8.8.8.8', 53))
+                    message, clientAddress = clientSocket.recvfrom(2048)
+                    severSocket.sendto(message, address)
+                    print(message)
                 continue
+        if self.QR == 1:
+            print("received")
 
     def __str__(self):
         return str(self.__dict__)
@@ -95,11 +100,14 @@ if __name__ == "__main__":
     db = []
     request = []
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('127.0.0.1', 53))  # 监听在80端口
+        severSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        severSocket.bind(('127.0.0.1', 53))  # 监听在80端口
         # sock.listen(10)
         while True:
-            message, clientAddress = sock.recvfrom(2048)
+            message, clientAddress = severSocket.recvfrom(2048)
+            print(clientAddress)
             dns_solve = dnsSolve(message.hex())
             dns_solve.handle(clientAddress)
     except KeyboardInterrupt:
