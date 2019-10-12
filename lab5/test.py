@@ -1,4 +1,5 @@
 import socket
+import struct
 
 from lab5.dns_struct_defines import Question, Answer
 
@@ -65,5 +66,6 @@ class dnsSolve:
 
 
 if __name__ == "__main__":
-    dns_solve = dnsSolve(testmessage)
-    print(dns_solve)
+    a = 1
+    b = struct.pack('>H', a)
+    print(b)
