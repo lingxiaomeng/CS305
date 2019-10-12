@@ -1,8 +1,9 @@
 class Question:
-    def __init__(self, qname, qtype, qclass):
+    def __init__(self, qname, qtype, qclass, qname_original):
         self.QNAME = qname
         self.QTYPE = qtype
         self.QCLASS = qclass
+        self.QNAME_original = qname_original
 
     def __str__(self):
         return str(self.__dict__)
@@ -12,13 +13,14 @@ class Question:
 
 
 class Answer:
-    def __init__(self, a_name, a_type, a_class, a_ttl, a_data_length, a_data):
+    def __init__(self, a_name, a_type, a_class, a_ttl, a_data_length, a_data, a_name_original):
         self.A_name = a_name
         self.A_type = a_type
         self.A_class_name = a_class
         self.A_ttl = a_ttl
         self.A_data_length = a_data_length
         self.A_data = a_data
+        self.A_name_original = a_name_original
 
     def __str__(self):
         return str(self.__dict__)
