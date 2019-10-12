@@ -86,7 +86,6 @@ class dnsSolve:
             answer = bytes.fromhex(rr.name) + struct.pack('>H', rr.a_type) + struct.pack('>H',
                                                                                          rr.a_class) + struct.pack(
                 '>L', int(rr.due_date - time.time())) + struct.pack('>H', rr.data_length) + bytes.fromhex(rr.data)
-            print(answer)
             return answer
 
     def find_record(self, rr):
@@ -98,12 +97,10 @@ class dnsSolve:
                 if old_rr.a_type == RR_type.CNAME:
                     cname_record = RR(name=old_rr.data, a_type=0, a_class=0)
                     a_record, num = self.find_record(cname_record)
-                    if num > 0:
+                    if num > 0 and len(answer) > 0:
                         answer_num = answer_num + num + 1
                         finial_answer += a_record
                         finial_answer += answer
-                        print('CNAME')
-                        print(num)
                 elif old_rr.a_type == RR_type.A or RR_type.AAAA or RR_type.TXT or RR_type.NS or RR_type.MX:
                     finial_answer += answer
                     answer_num += 1
@@ -116,8 +113,8 @@ class dnsSolve:
         return header
 
     def handle(self, address):
-        for rr in db:
-            print(rr)
+        # for rr in db:
+        #     print(rr)
         if self.QR == 0:
             for question in self.Questions.values():
                 rr = RR(name=question.QNAME_original, a_type=question.QTYPE, a_class=question.QCLASS)
