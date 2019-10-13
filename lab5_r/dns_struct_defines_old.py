@@ -71,18 +71,45 @@ class RR_type:
     DLV = 32769
 
 
+class Question:
+    def __init__(self, qname, qtype, qclass, qname_original):
+        self.QNAME = qname
+        self.QTYPE = qtype
+        self.QCLASS = qclass
+        self.QNAME_original = qname_original
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class Answer:
+    def __init__(self, a_name, a_type, a_class, a_ttl, a_data_length, a_data, a_name_original):
+        self.A_name = a_name
+        self.A_type = a_type
+        self.A_class = a_class
+        self.A_ttl = a_ttl
+        self.A_data_length = a_data_length
+        self.A_data = a_data
+        self.A_name_original = a_name_original
+
+    def __str__(self):
+        return str(self.__dict__)
+
+    def __repr__(self):
+        return self.__str__()
+
+
 class RR:
-    def __init__(self, name, name_original, a_type, a_class, data='', due_date=0, data_length=0):
-        self.NAME = name
-        self.TYPE = a_type
-        self.DATA = data
-        self.CLASS = a_class
-        if data_length == 0:
-            self.DATA_LENGTH = int(len(self.DATA) / 2)
-        else:
-            self.DATA_LENGTH = data_length
-        self.DUE_DATE = due_date
-        self.NAME_Original = name_original
+    def __init__(self, name, a_type, a_class, data='', due_date=0, data_length=0):
+        self.name = name
+        self.a_type = a_type
+        self.data = data
+        self.a_class = a_class
+        self.data_length = int(len(self.data) / 2)
+        self.due_date = due_date
 
     def __str__(self):
         return str(self.__dict__)
@@ -91,32 +118,7 @@ class RR:
         return self.__str__()
 
     def __eq__(self, other):
-        if other.TYPE == 5:
-            return self.NAME_Original == other.NAME_Original
+        if other.a_type == 5:
+            return self.name == other.name
         else:
-            return self.NAME_Original == other.NAME_Original and self.TYPE == other.TYPE
-
-
-class Question(RR):
-    def __init__(self, qname, qtype, qclass, qname_original):
-        super().__init__(name=qname, name_original=qname_original, a_type=qtype, a_class=qclass, data='', data_length=0,
-                         due_date=0)
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    def __repr__(self):
-        return self.__str__()
-
-
-class Answer(RR):
-    def __init__(self, a_name, a_type, a_class, a_ttl, a_data_length, a_data, a_name_original):
-        super().__init__(name=a_name, name_original=a_name_original, a_type=a_type, a_class=a_class,
-                         data_length=a_data_length, due_date=0, data=a_data)
-        self.A_ttl = a_ttl
-
-    def __str__(self):
-        return str(self.__dict__)
-
-    def __repr__(self):
-        return self.__str__()
+            return self.name == other.name and self.a_type == other.a_type
