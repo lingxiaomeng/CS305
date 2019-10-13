@@ -26,15 +26,6 @@ def get_dns_name(dns_message, start):
     return name, end, name_original
 
 
-# def generate_name(name_array):
-#     name = b''
-#     for i in range(0, len(name_array) - 1):
-#         name += name_array[i]
-#         name += b'.'
-#     name += name_array[-1]
-#     return name
-
-
 class dnsSolve:
     def __init__(self, dns_message):
         self.DNS_message = dns_message
@@ -95,7 +86,7 @@ class dnsSolve:
             if rr.__eq__(old_rr):
                 answer = self.generate_answer(old_rr)
                 if old_rr.a_type == RR_type.CNAME:
-                    cname_record = RR(name=old_rr.data, a_type=0, a_class=0)
+                    cname_record = RR(name=old_rr.data, a_type=rr.a_type, a_class=rr.a_class)
                     a_record, num = self.find_record(cname_record)
                     if num > 0 and len(answer) > 0:
                         answer_num = answer_num + num + 1
@@ -113,8 +104,6 @@ class dnsSolve:
         return header
 
     def handle(self, address):
-        # for rr in db:
-        #     print(rr)
         if self.QR == 0:
             for question in self.Questions.values():
                 rr = RR(name=question.QNAME_original, a_type=question.QTYPE, a_class=question.QCLASS)
@@ -122,7 +111,7 @@ class dnsSolve:
                 if qdcount > 0:
                     head = self.generate_header(qdcount)
                     severSocket.sendto(head + answer, address)
-                    print("find")
+                    print("find in cache")
                 else:
                     print("not find")
                     clientSocket.sendto(bytes.fromhex(self.DNS_message), ('172.18.1.92', 53))
@@ -130,12 +119,13 @@ class dnsSolve:
                     severSocket.sendto(foreign_name_server_response, address)
                     dns_answer = dnsSolve(foreign_name_server_response.hex())
                     dns_answer.handle(foreign_name_server_address)
-                # print(response)
         elif self.QR == 1:
             for answer in self.RRs.values():
-                # print(answer)
                 rr = RR(name=answer.A_name_original, a_type=answer.A_type, a_class=answer.A_class,
                         data=answer.A_data, due_date=time.time() + answer.A_ttl)
+                for old_rr in db:
+                    if old_rr.name == rr.name and rr.data == old_rr.data:
+                        db.remove(old_rr)
                 db.append(rr)
 
     def __str__(self):

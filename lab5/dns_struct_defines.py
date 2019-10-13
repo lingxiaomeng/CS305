@@ -118,4 +118,7 @@ class RR:
         return self.__str__()
 
     def __eq__(self, other):
-        return self.name == other.name
+        if other.a_type == 5:
+            return self.name == other.name
+        else:
+            return self.name == other.name and self.a_type == other.a_type

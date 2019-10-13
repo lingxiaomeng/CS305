@@ -6,5 +6,3 @@ udp_query = query(qname='a.shifen.com', rdtype=rdatatype.NS, tcp=False)
 
 print(udp_query.response)
 # print(tcp_query.response)
-
-import dns
