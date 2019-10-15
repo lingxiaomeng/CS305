@@ -1,6 +1,6 @@
 import socket
-import time
 import struct
+import time
 from lab5.dns_struct_defines import Question, Answer, RR, RR_type
 
 foreign_DNS_address = ('172.18.1.92', 53)
@@ -46,16 +46,17 @@ def find_record(rr):  # 在cache中寻找记录
     for old_rr in cache:
         if rr.__eq__(old_rr):
             answer = generate_answer(old_rr)  # 生成一条回复
-            if old_rr.TYPE == RR_type.CNAME:  # 如果type为CANME 继续递归寻找CNAME对应的A记录
-                cname_record = RR(name_original=old_rr.DATA, a_type=rr.TYPE, a_class=rr.CLASS, name=[])
-                a_record, num = find_record(cname_record)
-                if num > 0 and len(answer) > 0:
-                    answer_num = answer_num + num + 1
-                    finial_answer += a_record
+            if len(answer) > 0:
+                if old_rr.TYPE == RR_type.CNAME:  # 如果type为CANME 继续递归寻找CNAME对应的A记录
+                    cname_record = RR(name_original=old_rr.DATA, a_type=rr.TYPE, a_class=rr.CLASS, name=[])
+                    a_record, num = find_record(cname_record)
+                    if num > 0 or rr.TYPE == RR_type.CNAME:
+                        answer_num = answer_num + num + 1
+                        finial_answer += a_record
+                        finial_answer += answer
+                elif old_rr.TYPE == RR_type.A or RR_type.AAAA or RR_type.TXT or RR_type.NS or RR_type.MX:
                     finial_answer += answer
-            elif old_rr.TYPE == RR_type.A or RR_type.AAAA or RR_type.TXT or RR_type.NS or RR_type.MX:
-                finial_answer += answer
-                answer_num += 1
+                    answer_num += 1
     return finial_answer, answer_num
 
 
@@ -85,6 +86,7 @@ class dnsSolve:
             qclass = int(dns_message[end + 4:end + 8], 16)
             start = end + 8
             self.Questions[i] = (Question(qname, qtype, qclass, qname_origin))
+        self.QUESTIONS = dns_message[24:start]
 
         for i in range(0, self.ANCOUNT + self.NSCOUNT + self.ARCOUNT):  # 解包RR
             a_name, end, a_name_original = get_dns_name(dns_message, start)
@@ -92,19 +94,18 @@ class dnsSolve:
             a_class = int(dns_message[end + 4:end + 8], 16)
             a_ttl = int(dns_message[end + 8:end + 16], 16)
             a_data_length = int(dns_message[end + 16:end + 20], 16)
-            if a_type == RR_type.CNAME:  # 如果为CNAME解出其完整DATA
+            if a_type == RR_type.CNAME or a_type == RR_type.NS:  # 如果为CNAME或NS解出其完整DATA
                 _, _, a_data = get_dns_name(dns_message, end + 20)
             else:
                 a_data = dns_message[end + 20: end + 20 + 2 * a_data_length]
             start = end + 20 + 2 * a_data_length
             self.RRs[i] = Answer(a_name=a_name, a_name_original=a_name_original, a_class=a_class, a_ttl=a_ttl,
                                  a_data_length=0, a_data=a_data, a_type=a_type)
-            print(self.RRs[i])
 
-    def generate_header(self, qdcount):  # 生成返回Header
+    def generate_header(self, ancount):  # 生成返回Header
         flags = 0b1000000110000000  # FLAGS
-        header = struct.pack('>H', self.ID) + struct.pack('>H', flags) + struct.pack('>H', 0) + struct.pack(
-            '>H', qdcount) + struct.pack('>H', 0) + struct.pack('>H', 0)
+        header = struct.pack('>H', self.ID) + struct.pack('>H', flags) + struct.pack('>H', self.QDCOUNT) + struct.pack(
+            '>H', ancount) + struct.pack('>H', 0) + struct.pack('>H', 0) + bytes.fromhex(self.QUESTIONS)
         return header
 
     def handle(self, address):  # 处理事件
