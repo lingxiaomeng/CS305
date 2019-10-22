@@ -1,7 +1,7 @@
 import socket
 import struct
 import time
-from lab5.dns_struct_defines import Question, Answer, RR, RR_type
+from dns_struct_defines import Question, Answer, RR, RR_type
 
 foreign_DNS_address = ('172.18.1.92', 53)
 
@@ -29,7 +29,7 @@ def get_dns_name(dns_message, start):  # 解包NAME 结尾为0x00 返回 结尾�
 
 def generate_answer(rr):  # 生成一条回答
     ttl = int(rr.DUE_DATE - time.time())
-    if ttl <= 60:  # 令最短TTL为60
+    if ttl < 10:  # 令最短TTL为10
         cache.remove(rr)
         print("TLE")
         return b''
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     try:
         severSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        severSocket.bind(('127.0.0.1', 53))  # 监听端口
+        severSocket.bind(('127.0.0.1', 53))  # 监听端口53
         while True:
             message, clientAddress = severSocket.recvfrom(2048)
             dns_solve = dnsSolve(message.hex())

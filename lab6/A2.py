@@ -1,12 +1,13 @@
-import asyncio
 import mimetypes
 import os
+import socket
+import threading
+
 from urllib import parse
 
 import chardet
 
-err405 = [b'HTTP/1.0 405 Method Not Allowed\r\n', b'Connection: close\r\n',
-          b'Content-Type:text/html; charset=utf-8\r\n',
+err405 = [b'HTTP/1.0 405 Method Not Allowed\r\n', b'Connection: close\r\n', b'Content-Type:text/html; charset=utf-8\r\n',
           b'\r\n',
           b'<html><body>405 Method Not Allowed<body></html>\r\n', b'\r\n']
 
@@ -15,7 +16,7 @@ err404 = [b'HTTP/1.0 404 Not Found\r\n', b'Connection: close\r\n', b'Content-Typ
           b'<html><body>404 Not Found<body></html>\r\n', b'\r\n']
 
 
-def get_dir_html(dir_path):  # 请求为文件夹时
+def get_dir_html(dir_path):
     body = '<html><head><title>Index of%s</title></head><body bgcolor="white"><h1>Index of%s</h1><hr><pre>' % (
         dir_path, dir_path)
     for file in os.listdir(dir_path):
@@ -29,10 +30,11 @@ def get_dir_html(dir_path):  # 请求为文件夹时
     return html
 
 
-def get_file_html(file_path):  # 请求为文件时
+def get_file_html(file_path):
     file_type = str(mimetypes.guess_type(file_path)[0])  # 获取文件content-type
     file = open(file_path, 'rb')
     data = file.read()
+    # print(file_type)
     if 'text' in file_type:
         text_type = chardet.detect(data)['encoding']  # 判断文本文档的编码
         content_type = 'Content-Type: %s; charset=%s\r\n' % (file_type, text_type)
@@ -40,8 +42,7 @@ def get_file_html(file_path):  # 请求为文件时
         content_type = 'Content-Type: %s\r\n' % file_type
 
     content_length = 'Content-Length: %s\r\n' % str(os.path.getsize(file_path))
-    html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n', content_type.encode(),
-            content_length.encode(), b'\r\n',
+    html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', content_type.encode(), content_length.encode(), b'\r\n',
             data,
             b'\r\n']
     file.close()
@@ -59,46 +60,35 @@ def do_get(path):
     return res
 
 
-def has_range(header):
-    for data in header:
-        if 'Range' in data:
-            print(data)
-            print(data[13:])
-            range = data[13:].split('-')
-            start = range[0]
-            end = range[1]
-            print('{} {}'.format(start, end))
-            return True
-    return False
+class file_server(threading.Thread):
+    def __init__(self, conn, address):
+        threading.Thread.__init__(self)
+        self.conn = conn
+        self.address = address
 
-
-async def dispatch(reader, writer):
-    data = await reader.read(2048)
-    data = data.decode().split('\r\n')
-    print(data)
-    head = data[0].split(' ')
-    res = err405  # 默认返回405
-    if len(head) > 0:
-        if head[0] == 'GET':
-            if has_range(data):
-                print("has")
-            file_path = '.' + head[1]
-            file_path = parse.unquote(file_path)  # 解析中文字符
-            res = do_get(file_path)
-    writer.writelines(res)
-    await writer.drain()
-    writer.close()
+    def run(self):
+        data = self.conn.recv(2048).decode().split('\r\n')
+        print(str(self.address) + ":" + str(data))
+        head = data[0].split(' ')
+        res = err405  # 默认返回405
+        if len(head) > 0:
+            if head[0] == 'GET':
+                file_path = '.' + head[1]
+                file_path = parse.unquote(file_path)  # 解析中文字符
+                res = do_get(file_path)
+        for line in res:
+            self.conn.send(line)
+        self.conn.close()
+        print(str(self.address) + ":closed")
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    coro = asyncio.start_server(dispatch, '127.0.0.1', 80, loop=loop)
-    server = loop.run_until_complete(coro)
-    print('Serving on{}'.format(server.sockets[0].getsockname()))
     try:
-        loop.run_forever()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(('127.0.0.1', 80))  # 监听在80端口
+        sock.listen(10)
+        while True:
+            conn, address = sock.accept()
+            file_server(conn, address).start()
     except KeyboardInterrupt:
         exit()
-    server.close()
-    loop.run_until_complete(server.wait_closed())
-    loop.close()

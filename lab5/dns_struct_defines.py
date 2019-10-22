@@ -91,7 +91,7 @@ class RR:
         return self.__str__()
 
     def __eq__(self, other):
-        if other.TYPE == 5:
+        if other.TYPE == RR_type.CNAME:
             return self.NAME_Original == other.NAME_Original
         else:
             return self.NAME_Original == other.NAME_Original and self.TYPE == other.TYPE

@@ -40,8 +40,7 @@ def get_file_html(file_path):  # 请求为文件时
         content_type = 'Content-Type: %s\r\n' % file_type
 
     content_length = 'Content-Length: %s\r\n' % str(os.path.getsize(file_path))
-    html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n', content_type.encode(),
-            content_length.encode(), b'\r\n',
+    html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', content_type.encode(), content_length.encode(), b'\r\n',
             data,
             b'\r\n']
     file.close()
@@ -59,19 +58,6 @@ def do_get(path):
     return res
 
 
-def has_range(header):
-    for data in header:
-        if 'Range' in data:
-            print(data)
-            print(data[13:])
-            range = data[13:].split('-')
-            start = range[0]
-            end = range[1]
-            print('{} {}'.format(start, end))
-            return True
-    return False
-
-
 async def dispatch(reader, writer):
     data = await reader.read(2048)
     data = data.decode().split('\r\n')
@@ -80,8 +66,6 @@ async def dispatch(reader, writer):
     res = err405  # 默认返回405
     if len(head) > 0:
         if head[0] == 'GET':
-            if has_range(data):
-                print("has")
             file_path = '.' + head[1]
             file_path = parse.unquote(file_path)  # 解析中文字符
             res = do_get(file_path)
