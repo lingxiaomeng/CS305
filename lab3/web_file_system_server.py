@@ -42,32 +42,26 @@ class file_server(threading.Thread):
         self.conn = conn
         self.address = address
         self.range_start = 0
-        self.range_end = 0
+        self.range_end = -1
         self.response_range = False
         self.minsize = 10485760
         self.referer = None
+        self.host = '{}:{}'.format(server_path, server_port)
 
-    def has_range(self, header):
-        for data in header:
-            if 'Range' in data:
-                byte_range = data[13:].split('-')
-                self.range_start = int(byte_range[0])
-                self.range_end = 0 if byte_range[1] == '' else int(byte_range[1])
-                # print('{} {}'.format(self.range_start, self.range_end))
-                return True
-        return False
-
-    def set_cookie(self, header):
+    def set_header(self, header):
         for data in header:
             if 'Cookie' in data:
                 cookie = data[8:].split('=')[1]
                 self.cookie = cookie
-
-    def set_referer(self, header):
-        for data in header:
-            if 'Referer' in data:
-                cookie = data[9:]
-                self.referer = cookie
+            elif 'Referer' in data:
+                self.referer = data[9:]
+            elif 'Host' in data:
+                self.host = data[6:]
+            elif 'Range' in data:
+                byte_range = data[13:].split('-')
+                self.range_start = int(byte_range[0])
+                self.range_end = -1 if byte_range[1] == '' else int(byte_range[1])
+                self.response_range = True
 
     def get_dir_html(self, dir_path):
         cookie_state[self.cookie] = get_simplest_dir(dir_path[1:])
@@ -78,54 +72,59 @@ class file_server(threading.Thread):
             body += '<a href="%s">%s</a><br>' % (get_simplest_dir(dir_path[1:] + '/' + file), file)
         body += '</pre><hr></body></html>'
         content_length = 'Content-Length: %s; charset=utf-8\r\n' % str(len(body.encode()))
-        set_cookie = 'Set-Cookie: ID={}\r\n'.format(self.cookie)
+        set_cookie = 'Set-Cookie: ID={}; Path=/\r\n'.format(self.cookie)
         html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Content-Type:text/html; charset=utf-8\r\n',
                 content_length.encode(), set_cookie.encode(), b'\r\n',
-                body.encode(),
+                body.encode() + b'\r\n',
                 b'\r\n']
         return html
 
     def get_file_html(self, file_path):
         file_type = str(mimetypes.guess_type(file_path)[0])  # 获取文件content-type
-        file = open(file_path, 'rb')
-        data = file.read()
-        # print(file_type)
-        if 'text' in file_type:
-            text_type = chardet.detect(data)['encoding']  # 判断文本文档的编码
-            content_type = 'Content-Type: %s; charset=%s\r\n' % (file_type, text_type)
-        else:
-            content_type = 'Content-Type: %s\r\n' % file_type
         if self.response_range:
+            file = open(file_path, 'rb')
             file_size = os.path.getsize(file_path)
             if self.range_start >= file_size:
                 self.range_start = 0
-            if self.range_end == 0 or self.range_end > file_size:
+            if self.range_end == -1 or self.range_end >= file_size:
                 self.range_end = file_size - 1
-            content_length = 'Content-Length: %d\r\n' % (self.range_end - self.range_start)
+            content_type = 'Content-Type: %s\r\n' % file_type
+            content_length = 'Content-Length: %d\r\n' % (self.range_end - self.range_start + 1)
             content_range = 'Content-range: bytes %d-%d/%d\r\n' % (self.range_start, self.range_end, file_size)
-            html = [b'HTTP/1.0 206 Partial content\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n',
-                    content_type.encode(),
-                    content_length.encode(), content_range.encode(), b'\r\n',
-                    data[self.range_start:self.range_end + 1],
-                    b'\r\n']
+            html_header = [b'HTTP/1.1 206 Partial content\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n',
+                           content_type.encode(),
+                           content_length.encode(), content_range.encode(), b'\r\n']
+            self.send_response(html_header)
+            file.seek(self.range_start)
+            data = file.read(self.range_end - self.range_start + 1)
+            file.close()
+            return [data]
         else:
+            file = open(file_path, 'rb')
+            data = b''
+            if 'text' in file_type:
+                data = file.read()
+                text_type = chardet.detect(data)['encoding']  # 判断文本文档的编码
+                content_type = 'Content-Type: %s; charset=%s\r\n' % (file_type, text_type)
+            else:
+                content_type = 'Content-Type: %s\r\n' % file_type
             content_length = 'Content-Length: %d\r\n' % (os.path.getsize(file_path))
-            html = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n',
-                    content_type.encode(),
-                    content_length.encode(), b'\r\n',
-                    data,
-                    b'\r\n']
-        file.close()
-        return html
+            html_header = [b'HTTP/1.0 200 OK\r\n', b'Connection: close\r\n', b'Accept-Ranges: bytes\r\n',
+                           content_type.encode(),
+                           content_length.encode(), b'\r\n']
+            self.send_response(html_header)
+            html_content = [data + file.read()]
+            file.close()
+            return html_content
 
     def do_get(self, path):
         if self.cookie:
             cookie_path = cookie_state.get(self.cookie)
             if path == './' and cookie_path and cookie_path != '/' and (
-                    not self.referer or self.referer == 'http://{}:{}/'.format(server_path, server_port)):
+                    not self.referer or self.referer == 'http://{}/'.format(self.host)):
                 res = [b'HTTP/1.0 302 Found\r\n', b'Connection: close\r\n',
-                       ('Location: http://%s:%d%s\r\n' % (
-                           server_path, server_port, cookie_state[self.cookie])).encode(),
+                       ('Location: %s\r\n' % (
+                           cookie_state[self.cookie])).encode(),
                        b'Content-Type:text/html; charset=utf-8\r\n',
                        b'\r\n',
                        b'<html><body>405 Method Not Allowed<body></html>\r\n', b'\r\n']
@@ -141,21 +140,9 @@ class file_server(threading.Thread):
             res = err404
         return res
 
-    def run(self):
-        data = self.conn.recv(2048).decode().split('\r\n')
-        print(str(self.address) + ":" + str(data))
-        self.response_range = self.has_range(data)
-        self.set_cookie(data)
-        self.set_referer(data)
-        head = data[0].split(' ')
-        res = err405  # 默认返回405
-        if len(head) > 0:
-            if head[0] == 'GET':
-                file_path = '.' + head[1]
-                file_path = parse.unquote(file_path)  # 解析中文字符
-                res = self.do_get(file_path)
+    def send_response(self, response):
         try:
-            for line in res:
+            for line in response:
                 self.conn.send(line)
         except ConnectionAbortedError:
             print(str(self.address) + ":ConnectionAbortedError,远程主机强迫关闭了一个现有的连接")
@@ -163,6 +150,19 @@ class file_server(threading.Thread):
             print(str(self.address) + ":ConnectionResetError,远程主机强迫关闭了一个现有的连接")
         except BrokenPipeError:
             print(str(self.address) + ":[Errno 32] Broken pipe")
+
+    def run(self):
+        data = self.conn.recv(2048).decode().split('\r\n')
+        print(str(self.address) + ":" + str(data))
+        self.set_header(data)
+        head = data[0].split(' ')
+        res = err405  # 默认返回405
+        if len(head) > 0:
+            if head[0] == 'GET':
+                file_path = '.' + head[1]
+                file_path = parse.unquote(file_path)  # 解析中文字符
+                res = self.do_get(file_path)
+        self.send_response(res)
         self.conn.close()
         print(str(self.address) + ":closed")
 
