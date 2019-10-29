@@ -1,4 +1,4 @@
-import socket
+import rdt
 import time
 import struct
 from lab5_r.dns_struct_defines_old import Question, Answer, RR, RR_type
@@ -135,8 +135,8 @@ class dnsSolve:
 if __name__ == "__main__":
     db = []
     try:
-        severSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        severSocket = rdt.socket(rdt.AF_INET, rdt.SOCK_DGRAM)
+        clientSocket = rdt.socket(rdt.AF_INET, rdt.SOCK_DGRAM)
 
         severSocket.bind(('127.0.0.1', 53))  # 监听在53端口
         while True:

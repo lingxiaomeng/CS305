@@ -1,4 +1,4 @@
-import socket
+import rdt
 import struct
 import time
 from dns_struct_defines import Question, Answer, RR, RR_type
@@ -139,8 +139,8 @@ class dnsSolve:
 if __name__ == "__main__":
     cache = []
     try:
-        severSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        severSocket = rdt.socket(rdt.AF_INET, rdt.SOCK_DGRAM)
+        clientSocket = rdt.socket(rdt.AF_INET, rdt.SOCK_DGRAM)
         severSocket.bind(('127.0.0.1', 53))  # 监听端口53
         while True:
             message, clientAddress = severSocket.recvfrom(2048)

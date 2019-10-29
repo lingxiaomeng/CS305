@@ -1,4 +1,4 @@
-import socket
+import rdt
 import struct
 
 from lab5.dns_struct_defines import Question, Answer

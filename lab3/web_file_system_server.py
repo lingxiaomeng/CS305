@@ -1,6 +1,7 @@
 import mimetypes
 import os
-import socket
+import random
+import rdt
 import threading
 import time
 
@@ -98,7 +99,7 @@ class file_server(threading.Thread):
             file.seek(self.range_start)
             data = file.read(self.range_end - self.range_start + 1)
             file.close()
-            return [data]
+            return [data, b'\r\n']
         else:
             file = open(file_path, 'rb')
             data = b''
@@ -113,7 +114,7 @@ class file_server(threading.Thread):
                            content_type.encode(),
                            content_length.encode(), b'\r\n']
             self.send_response(html_header)
-            html_content = [data + file.read()]
+            html_content = [data + file.read(), b'\r\n']
             file.close()
             return html_content
 
@@ -130,7 +131,7 @@ class file_server(threading.Thread):
                        b'<html><body>405 Method Not Allowed<body></html>\r\n', b'\r\n']
                 return res
         else:
-            self.cookie = str(int(time.time()))
+            self.cookie = str(int(time.time())) + random.choice('abcdefghijklmnopqrstuvwxyz')
 
         if os.path.isdir(path):
             res = self.get_dir_html(path)
@@ -170,7 +171,7 @@ class file_server(threading.Thread):
 if __name__ == "__main__":
     try:
         cookie_state = dict()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = rdt.socket(rdt.AF_INET, rdt.SOCK_STREAM)
         sock.bind((server_path, 8080))  # 监听在8080端口
         sock.listen(10)
         while True:

@@ -1,6 +1,6 @@
 import mimetypes
 import os
-import socket
+import rdt
 import threading
 
 from urllib import parse
@@ -84,7 +84,7 @@ class file_server(threading.Thread):
 
 if __name__ == "__main__":
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock = rdt.socket(rdt.AF_INET, rdt.SOCK_STREAM)
         sock.bind(('127.0.0.1', 80))  # 监听在80端口
         sock.listen(10)
         while True:
