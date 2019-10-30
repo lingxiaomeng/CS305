@@ -8,7 +8,7 @@ while True:
     print(conn)
     print(client)
     while True:
-        data = conn.recv(2048)
+        data = conn.recv(4096)
         if not data:
             break
         print(data)

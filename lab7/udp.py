@@ -9,14 +9,14 @@ class UDPsocket(socket):
         self.corruption_rate = corruption_rate
         self.delay_rate = delay_rate
         self.delay = delay
-        self._timeout = 0.5
+        # self.timeout = 0.5
 
     def settimeout(self, value):
-        self._timeout = value
+        self.timeout = value
 
     def recvfrom(self, bufsize):
         if random.random() < self.delay_rate:
-            time.sleep(self._timeout)
+            time.sleep(self.timeout)
             return None
 
         data, addr = super().recvfrom(bufsize)
