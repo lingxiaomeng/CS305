@@ -1,5 +1,7 @@
 import math
 from time import sleep, time
+from typing import List
+
 from udp import UDPsocket
 
 
@@ -16,6 +18,12 @@ class packet:
         self.payload = None
         self.send_bytes = None
         self.checksum = 0
+
+    def has_ack(self, ack_packet):
+        if ack_packet.seq_num == self.ack_num + self.payload_len:
+            return True
+        else:
+            return False
 
     def generate_send_packet(self, payload: bytes, psh: int, syn: int, fin: int, ack: int, seq_num: int, ack_num: int,
                              payload_len):
@@ -99,7 +107,9 @@ class socket(UDPsocket):
         self.state = self.CLOSED
         self.sender_state = 0
         self.recv_state = 0
+        self.next_seq_num = 0
 
+        self.base = 0
         self.init_time = time()
 
     def connect(self, address):
@@ -178,11 +188,49 @@ class socket(UDPsocket):
                                       syn=0)
         packets.append(packet_i)
         print(packets)
-        super().sendto(data, self.to_addr)
-        pass
+        self.base = self.seq_num
+        self.next_seq_num = self.seq_num
+        start_packet_num = 0
+        cur_packet_num = 0
+        while True:
+            if self.next_seq_num == len(data):
+                break
+            if self.next_seq_num < self.base + self.window_size and self.next_seq_num < len(data):
+                self.sendto(packets[cur_packet_num].send_bytes, self.to_addr)
+                if self.base == self.next_seq_num:
+                    self.init_time = time()
+                self.next_seq_num += packets[cur_packet_num].payload_len
+                cur_packet_num += 1
+            if time() - self.init_time >= 0.5:
+                self.init_time = time()
+                for i in range(start_packet_num, cur_packet_num):
+                    self.sendto(packets[i].send_bytes, self.to_addr)
 
-    def send_fsm(self, push, syn, ack, fin):
+            try:
+                data, addr = super().recvfrom(2048)
+                recv_packet = packet()
+                recv_packet.handle_recv_packet(data)
+                if recv_packet.checksum == 0:
+                    ack_index = self.find_ack_index(packets, recv_packet)
+                    if ack_index:
+                        self.base = recv_packet.ack_num + recv_packet.payload_len
+                        start_packet_num = ack_index + 1
+                        if self.base == self.next_seq_num:
+                            self.init_time = time()
+                        else:
+                            self.init_time = time()
 
+            except BlockingIOError:
+                pass
+
+    @staticmethod
+    def find_ack_index(send_packets: List[packet], recv_packet: packet):
+        for i in range(len(send_packets)):
+            if send_packets[i].has_ack(recv_packet):
+                return i
+        return None
+
+    def send_fsm(self, push: int, ack: int, packets: List[packet]):
         pass
 
     def fsm(self, syn, ack, fin, close, connect, to_address):
@@ -211,11 +259,11 @@ class socket(UDPsocket):
             if ack:
                 self.state = self.ESTABLISHED
             if close:
-                syn_ack_packet = packet()
-                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=0, fin=1, seq_num=self.seq_num,
-                                                    ack_num=self.ack_num,
-                                                    payload_len=0)
-                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+                fin_packet = packet()
+                fin_packet.generate_send_packet(b'', psh=0, syn=0, ack=0, fin=1, seq_num=self.seq_num,
+                                                ack_num=self.ack_num,
+                                                payload_len=0)
+                self.sendto(fin_packet.send_bytes, self.to_addr)
                 self.state = self.FIN_WAIT_1
         elif self.state == self.SYN_SENT:
             if close:
@@ -229,11 +277,11 @@ class socket(UDPsocket):
 
                 self.state = self.SYN_RECV
             elif syn and ack:
-                syn_ack_packet = packet()
-                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
-                                                    ack_num=self.ack_num,
-                                                    payload_len=0)
-                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+                ack_packet = packet()
+                ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
+                                                ack_num=self.ack_num,
+                                                payload_len=0)
+                self.sendto(ack_packet.send_bytes, self.to_addr)
 
                 self.state = self.ESTABLISHED
         elif self.state == self.ESTABLISHED:
@@ -267,22 +315,22 @@ class socket(UDPsocket):
                 self.state = self.CLOSED
         elif self.state == self.FIN_WAIT_1:
             if fin and not ack:
-                syn_ack_packet = packet()
-                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
-                                                    ack_num=self.ack_num,
-                                                    payload_len=0)
-                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+                ack_packet = packet()
+                ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
+                                                ack_num=self.ack_num,
+                                                payload_len=0)
+                self.sendto(ack_packet.send_bytes, self.to_addr)
                 self.state = self.CLOSING
             elif fin and ack:
                 self.state = self.FIN_WAIT_2
 
         elif self.state == self.FIN_WAIT_2:
             if fin:
-                syn_ack_packet = packet()
-                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
-                                                    ack_num=self.ack_num,
-                                                    payload_len=0)
-                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+                ack_packet = packet()
+                ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
+                                                ack_num=self.ack_num,
+                                                payload_len=0)
+                self.sendto(ack_packet.send_bytes, self.to_addr)
                 self.state = self.TIME_WAIT
         elif self.state == self.CLOSING:
             if ack:
