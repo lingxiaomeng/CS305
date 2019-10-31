@@ -1,3 +1,5 @@
+from time import sleep
+
 from udp import UDPsocket
 
 
@@ -16,6 +18,27 @@ class receiver_FSM:
 
     def __init__(self):
         self.state = self.CLOSED
+
+    def fsm(self, syn, ack, fin, close, connect, rdt_socket):
+        if self.state == self.LISTEN:
+            if syn:
+                self.state = self.SYN_RECV
+            elif connect:
+                self.state = self.SYN_SENT
+            elif close:
+                self.state = self.CLOSED
+        elif self.state == self.SYN_RECV:
+            if ack:
+                self.state = self.ESTABLISHED
+            if close:
+                self.state = self.FIN_WAIT_1
+        elif self.state == self.SYN_SENT:
+            if close:
+                self.state = self.CLOSED
+            elif syn and not ack:
+                self.state = self.SYN_RECV
+            elif syn and ack:
+                self.state = self.ESTABLISHED
 
 
 class packet:
@@ -82,6 +105,18 @@ class packet:
 
 
 class socket(UDPsocket):
+    LISTEN = 0
+    SYN_RECV = 1
+    SYN_SENT = 2
+    CLOSED = -1
+    ESTABLISHED = 3
+    FIN_WAIT_1 = 4
+    FIN_WAIT_2 = 5
+    TIME_WAIT = 6
+    CLOSING = 7
+    CLOSE_WAIT = 8
+    LAST_ACK = 9
+
     def __init__(self):
         super(socket, self).__init__()
         # self.setblocking(False)
@@ -90,6 +125,7 @@ class socket(UDPsocket):
         self.ack_num = 0
         self.window_size = 4
         self.max_payload_len = 8
+        self.state = self.CLOSED
 
     def connect(self, address):
         syn_packet = packet()
@@ -140,3 +176,91 @@ class socket(UDPsocket):
     def send(self, data: bytes, flags: int = ...):
         super().sendto(data, self.to_addr)
         pass
+
+    def fsm(self, syn, ack, fin, close, connect, rdt_socket):
+        if self.state == self.LISTEN:
+            if syn:
+                self.state = self.SYN_RECV
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=1, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+            elif connect:
+                self.state = self.SYN_SENT
+                syn_packet = packet()
+                syn_packet.generate_send_packet(b'', psh=0, syn=1, ack=0, fin=0, seq=self.seq_num,
+                                                seq_ack=self.ack_num, payload_len=0)
+                self.sendto(syn_packet.send_bytes, self.to_addr)
+            elif close:
+                self.state = self.CLOSED
+        elif self.state == self.SYN_RECV:
+            if ack and syn:
+                self.state = self.ESTABLISHED
+            if close:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=0, fin=1, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.sendto(syn_ack_packet.send_bytes, self.to_addr)
+                self.state = self.FIN_WAIT_1
+        elif self.state == self.SYN_SENT:
+            if close:
+                self.state = self.CLOSED
+            elif syn and not ack:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.SYN_RECV
+            elif syn and ack:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.SYN_RECV
+        elif self.state == self.ESTABLISHED:
+            if close:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=0, fin=1, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.FIN_WAIT_1
+            elif fin:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.CLOSE_WAIT
+        elif self.state == self.CLOSE_WAIT:
+            if close:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=0, fin=1, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.LAST_ACK
+        elif self.state == self.LAST_ACK:
+            if ack and fin:
+                self.state = self.CLOSED
+        elif self.state == self.FIN_WAIT_1:
+            if ack and fin:
+                self.state = self.FIN_WAIT_2
+            elif fin:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.CLOSING
+        elif self.state == self.FIN_WAIT_2:
+            if fin:
+                syn_ack_packet = packet()
+                syn_ack_packet.generate_send_packet(b'', psh=0, syn=0, ack=1, fin=0, seq=self.seq_num,
+                                                    seq_ack=self.ack_num,
+                                                    payload_len=0)
+                self.state = self.TIME_WAIT
+        elif self.state == self.CLOSING:
+            if ack and fin:
+                self.state = self.TIME_WAIT
+        elif self.state == self.TIME_WAIT:
+            sleep(0.002)
+            self.state = self.CLOSED
