@@ -29,6 +29,6 @@ def handle_packet(recv_packet: bytes):
     print(check & 0xFFFF)
 
 
-packet = generate_packet(b'hello', 1, 1, 1, 1, 1, 5)
-
-handle_packet(packet)
+a = 0
+if a:
+    print(1)
