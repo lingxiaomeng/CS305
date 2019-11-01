@@ -20,7 +20,7 @@ class packet:
         self.checksum = 0
 
     def has_ack(self, ack_packet):
-        if ack_packet.seq_num == self.ack_num + self.payload_len:
+        if ack_packet.ack_num == self.seq_num + self.payload_len:
             return True
         else:
             return False
@@ -60,7 +60,7 @@ class packet:
         self.payload_len = (recv_packet[10] << 24) + (recv_packet[11] << 16) + (recv_packet[12] << 8) + (
                 recv_packet[13] << 0)
         self.payload = recv_packet[16:]
-        print(self)
+        # print(self)
 
     @staticmethod
     def cal_check_sum(msg: bytes):
@@ -75,7 +75,7 @@ class packet:
         return s
 
     def __str__(self):
-        return str(self.__dict__)
+        return 'seq={},ack={},len={},data={}'.format(self.seq_num, self.ack_num, self.payload_len, self.payload)
 
     def __repr__(self):
         return self.__str__()
@@ -160,16 +160,55 @@ class socket(UDPsocket):
             except BlockingIOError:
                 self.fsm(syn=0, ack=0, fin=0, close=1, connect=0,
                          to_address=self.to_addr)
+
+        self.to_addr = None
+        self.seq_num = 0
+        self.ack_num = 0
+
+        self.max_payload_len = 8
+        self.window_size = 4 * self.max_payload_len
+
+        self.state = self.CLOSED
+        self.sender_state = 0
+        self.recv_state = 0
+        self.next_seq_num = 0
+
+        self.base = 0
+        self.init_time = time()
         print("closed")
 
     def recv(self, bufsize):
-        try:
-            data, addr = super().recvfrom(2048)
-            return data
-        except BlockingIOError:
-            pass
+        print("start receive")
+        expected_seq_num = self.ack_num
+        recv_data = b''
+        while True:
+            try:
+                data, addr = super().recvfrom(2048)
+                recv_packet = packet()
+                recv_packet.handle_recv_packet(data)
+                print("received: " + str(recv_packet))
+                if recv_packet.checksum == 0 and addr == self.to_addr:
+                    print('recv seq num: {} expected_seq_num: {}'.format(recv_packet.seq_num, expected_seq_num))
+                    if recv_packet.seq_num == expected_seq_num:
+                        self.ack_num = recv_packet.seq_num + recv_packet.payload_len
+                        ack_packet = packet()
+                        ack_packet.generate_send_packet(payload=b'', psh=0, syn=0, fin=0, ack=1,
+                                                        seq_num=self.seq_num, ack_num=self.ack_num, payload_len=0)
+                        self.sendto(ack_packet.send_bytes, self.to_addr)
+                        print("send: " + str(ack_packet))
+                        expected_seq_num += recv_packet.payload_len
+                        recv_data += recv_packet.payload
+                        if recv_packet.psh:
+                            break
+            except BlockingIOError:
+                pass
+        print("end receive")
+
+        return recv_data
 
     def send(self, data: bytes, flags: int = ...):
+        print("start send")
+
         packets = []
         packet_num = math.ceil(len(data) / self.max_payload_len)
         for i in range(packet_num - 1):
@@ -189,39 +228,43 @@ class socket(UDPsocket):
         packets.append(packet_i)
         print(packets)
         self.base = self.seq_num
-        self.next_seq_num = self.seq_num
         start_packet_num = 0
         cur_packet_num = 0
         while True:
-            if self.next_seq_num == len(data):
-                break
-            if self.next_seq_num < self.base + self.window_size and self.next_seq_num < len(data):
+            # print(self.next_seq_num)
+            if self.next_seq_num < self.base + self.window_size and self.next_seq_num <= self.seq_num + (
+                    packet_num - 1) * self.max_payload_len:
                 self.sendto(packets[cur_packet_num].send_bytes, self.to_addr)
+                print("send: " + str(packets[cur_packet_num]))
                 if self.base == self.next_seq_num:
                     self.init_time = time()
                 self.next_seq_num += packets[cur_packet_num].payload_len
                 cur_packet_num += 1
-            if time() - self.init_time >= 0.5:
-                self.init_time = time()
-                for i in range(start_packet_num, cur_packet_num):
-                    self.sendto(packets[i].send_bytes, self.to_addr)
-
             try:
                 data, addr = super().recvfrom(2048)
                 recv_packet = packet()
                 recv_packet.handle_recv_packet(data)
+                print("received: " + str(recv_packet))
                 if recv_packet.checksum == 0:
                     ack_index = self.find_ack_index(packets, recv_packet)
+                    # print(ack_index)
                     if ack_index:
                         self.base = recv_packet.ack_num + recv_packet.payload_len
                         start_packet_num = ack_index + 1
                         if self.base == self.next_seq_num:
-                            self.init_time = time()
+                            break
                         else:
                             self.init_time = time()
-
             except BlockingIOError:
-                pass
+                if self.base == self.next_seq_num:
+                    break
+            if time() - self.init_time >= 0.5:
+                self.init_time = time()
+                for i in range(start_packet_num, cur_packet_num):
+                    self.sendto(packets[i].send_bytes, self.to_addr)
+                    print("send: " + str(packets[i]))
+
+        print("end send")
 
     @staticmethod
     def find_ack_index(send_packets: List[packet], recv_packet: packet):
@@ -229,9 +272,6 @@ class socket(UDPsocket):
             if send_packets[i].has_ack(recv_packet):
                 return i
         return None
-
-    def send_fsm(self, push: int, ack: int, packets: List[packet]):
-        pass
 
     def fsm(self, syn, ack, fin, close, connect, to_address):
         # print("syn: " + str(syn) + " ack: " + str(ack) + " fin: " + str(fin) + " state: " + str(
