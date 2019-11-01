@@ -247,19 +247,20 @@ class socket(UDPsocket):
                 print("received: " + str(recv_packet))
                 if recv_packet.checksum == 0:
                     ack_index = self.find_ack_index(packets, recv_packet)
-                    # print(ack_index)
                     if ack_index:
                         self.base = recv_packet.ack_num + recv_packet.payload_len
                         start_packet_num = ack_index + 1
                         if self.base == self.next_seq_num:
+                            self.seq_num = self.next_seq_num
                             break
                         else:
                             self.init_time = time()
             except BlockingIOError:
                 if self.base == self.next_seq_num:
                     break
-            if time() - self.init_time >= 0.5:
+            if time() - self.init_time >= 5:
                 self.init_time = time()
+                print("time out")
                 for i in range(start_packet_num, cur_packet_num):
                     self.sendto(packets[i].send_bytes, self.to_addr)
                     print("send: " + str(packets[i]))

@@ -11,6 +11,13 @@ try:
                 break
             print(data)
             conn.send(data)
+
+            data = conn.recv(4096)
+            if not data:
+                break
+            print(data)
+            conn.send(data)
+
             conn.close()
             break
 except ConnectionResetError:
