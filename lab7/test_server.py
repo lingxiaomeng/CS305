@@ -1,24 +1,23 @@
 from rdt import socket
 
-try:
-    server = socket()
-    server.bind(('127.0.0.1', 7654))
+
+server = socket()
+server.bind(('127.0.0.1', 7654))
+while True:
+    conn, client = server.accept()
     while True:
-        conn, client = server.accept()
-        while True:
-            data = conn.recv(4096)
-            if not data:
-                break
-            print(data)
-            conn.send(data)
-
-            data = conn.recv(4096)
-            if not data:
-                break
-            print(data)
-            conn.send(data)
-
-            conn.close()
+        data = conn.recv(4096)
+        if not data:
             break
-except ConnectionResetError:
-    print("error")
+        print(data)
+        conn.send(data)
+
+        data = conn.recv(4096)
+        if not data:
+            break
+        print(data)
+        conn.send(data)
+        conn.close()
+        break
+
+

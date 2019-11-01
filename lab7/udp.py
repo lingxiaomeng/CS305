@@ -3,13 +3,13 @@ import random, time
 
 
 class UDPsocket(socket):
-    def __init__(self, loss_rate=0, corruption_rate=0, delay_rate=0, delay=10):
+    def __init__(self, loss_rate=0.1, corruption_rate=0.3, delay_rate=0, delay=5):
         super().__init__(AF_INET, SOCK_DGRAM)
         self.loss_rate = loss_rate
         self.corruption_rate = corruption_rate
         self.delay_rate = delay_rate
         self.delay = delay
-        self.time_out = 0.5
+        self.time_out = 1.2
 
     def settimeout(self, value):
         self.time_out = value
