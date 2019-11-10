@@ -1,7 +1,7 @@
 from socket import *
 
 server = socket(AF_INET, SOCK_STREAM)
-server.bind(('127.0.0.1', 7654))
+server.bind(('127.0.0.1', 7777))
 server.listen(1)
 while True:
     conn, client = server.accept()
