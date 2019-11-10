@@ -136,7 +136,7 @@ class socket(UDPsocket):
         self.base = 0
         self.init_time = time()
 
-        self.max_delay_time = 0.1
+        self.max_delay_time = 0.2
         self.last_state = 0
         self.is_server = False
 
@@ -196,7 +196,7 @@ class socket(UDPsocket):
                          to_address=self.to_addr, recv_packet=None)
             except ConnectionResetError:
                 print("ConnectionResetError")
-
+        self.is_server = True
         print("server accepted")
         return self, self.to_addr
 
@@ -249,10 +249,10 @@ class socket(UDPsocket):
                     data, addr = recv
                     recv_packet = packet()
                     recv_packet.handle_recv_packet(data)
-                    # print("receiver: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
-                    #                                                            localtime()))
+                    print("receiver: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
+                                                                               localtime()))
                     if recv_packet.checksum == 0 and addr == self.to_addr:
-                        # print('recv seq num: {} expected_seq_num: {}'.format(recv_packet.seq_num, expected_seq_num))
+                        print('recv seq num: {} expected_seq_num: {}'.format(recv_packet.seq_num, expected_seq_num))
                         if recv_packet.seq_num == expected_seq_num:
                             self.ack_num = recv_packet.seq_num + recv_packet.payload_len
                             self.seq_num = recv_packet.ack_num
@@ -264,8 +264,8 @@ class socket(UDPsocket):
                         ack_packet.generate_send_packet(payload=b'', rst=0, psh=0, syn=0, fin=0, ack=1,
                                                         seq_num=self.seq_num, ack_num=self.ack_num, payload_len=0)
                         self.sendto(ack_packet.send_bytes, self.to_addr)
-                        # print("receiver: send: " + str(ack_packet) + strftime("%Y-%m-%d %H:%M:%S",
-                        #                                                       localtime()))
+                        print("receiver: send: " + str(ack_packet) + strftime("%Y-%m-%d %H:%M:%S",
+                                                                              localtime()))
             except BlockingIOError:
                 pass
         print("end receive")
@@ -296,12 +296,11 @@ class socket(UDPsocket):
         start_packet_num = 0
         cur_packet_num = 0
         while True:
-            # print(self.next_seq_num)
             if self.next_seq_num < self.base + self.window_size and self.next_seq_num <= self.seq_num + (
                     packet_num - 1) * self.max_payload_len:
                 self.sendto(packets[cur_packet_num].send_bytes, self.to_addr)
-                # print("sender: send: " + str(packets[cur_packet_num]) + strftime("%Y-%m-%d %H:%M:%S",
-                #                                                                  localtime()))
+                print("sender: send: " + str(packets[cur_packet_num]) + strftime("%Y-%m-%d %H:%M:%S",
+                                                                                 localtime()))
                 if self.base == self.next_seq_num:
                     self.init_time = time()
                     self.is_timeout = False
@@ -313,8 +312,8 @@ class socket(UDPsocket):
                     recv_data, addr = recv
                     recv_packet = packet()
                     recv_packet.handle_recv_packet(recv_data)
-                    # print("sender: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
-                    #                                                          localtime()))
+                    print("sender: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
+                                                                             localtime()))
                     if recv_packet.checksum == 0:
                         ack_index = self.find_ack_index(packets, recv_packet)
                         if ack_index >= 0:
@@ -336,8 +335,8 @@ class socket(UDPsocket):
                 # print("time out")
                 for i in range(start_packet_num, cur_packet_num):
                     self.sendto(packets[i].send_bytes, self.to_addr)
-                    # print("sender: send: " + str(packets[i]) + strftime("%Y-%m-%d %H:%M:%S",
-                    #                                                     localtime()))
+                    print("sender: send: " + str(packets[i]) + strftime("%Y-%m-%d %H:%M:%S",
+                                                                        localtime()))
 
         print("end send")
 
@@ -386,6 +385,7 @@ class socket(UDPsocket):
                                                 ack_num=self.ack_num, payload_len=0)
                 try:
                     self.sendto(rst_packet.send_bytes, to_address)
+                    print("fsm send rst")
                 except ConnectionResetError:
                     pass
         elif self.state == self.SYN_SENT:
@@ -494,7 +494,6 @@ class socket(UDPsocket):
                                                 ack_num=self.ack_num,
                                                 payload_len=0)
             self.state = self.LAST_ACK
-            print(self.state_dict[self.state])
         elif self.state == self.LAST_ACK:
             if ack and not fin:
                 self.state = self.CLOSED
@@ -510,12 +509,12 @@ class socket(UDPsocket):
                     self.sendto(fin_packet.send_bytes, self.to_addr)
                 except ConnectionResetError:
                     self.state = self.CLOSED
-        # if recv_packet:
-        # print("fsm: received: " + str(recv_packet) + " " + strftime("%Y-%m-%d %H:%M:%S",
-        #                                                             localtime()))
+        if recv_packet:
+            print("fsm: received: " + str(recv_packet) + " " + strftime("%Y-%m-%d %H:%M:%S",
+                                                                        localtime()))
         if packet_to_sent:
-            # print("fsm: send: " + str(packet_to_sent) + " " + strftime("%Y-%m-%d %H:%M:%S",
-            #                                                            localtime()))
+            print("fsm: send: " + str(packet_to_sent) + " " + strftime("%Y-%m-%d %H:%M:%S",
+                                                                       localtime()))
             self.sendto(packet_to_sent.send_bytes, self.to_addr)
 
         if self.state != last_state:
