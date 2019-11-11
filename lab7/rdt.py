@@ -30,7 +30,8 @@ class packet:
 
     def generate_send_packet(self, payload: bytes, rst: int, psh: int, syn: int, fin: int, ack: int, seq_num: int,
                              ack_num: int,
-                             payload_len):
+                             payload_len, send=0):
+        self.send = 0
         self.rst = rst
         self.psh = psh
         self.syn = syn
@@ -40,7 +41,7 @@ class packet:
         self.ack_num = ack_num
         self.payload_len = payload_len
         self.payload = payload
-        self.head = ((rst << 4) + (psh << 3) + (syn << 2) + (fin << 1) + (ack << 0))
+        self.head = ((send << 5) + (rst << 4) + (psh << 3) + (syn << 2) + (fin << 1) + (ack << 0))
         head_byte = self.head.to_bytes(2, byteorder='big')
         seq_byte = seq_num.to_bytes(4, byteorder='big')
         seq_ack_byte = ack_num.to_bytes(4, byteorder='big')
@@ -56,6 +57,7 @@ class packet:
             return
         self.checksum = self.cal_check_sum(recv_packet) & 0xFFFF
         self.head = (recv_packet[0] << 8) + recv_packet[1]
+        self.send = (self.head & 32) >> 5
         self.rst = (self.head & 16) >> 4
         self.psh = (self.head & 8) >> 3
         self.syn = (self.head & 4) >> 2
@@ -86,7 +88,8 @@ class packet:
         return s
 
     def __str__(self):
-        return 'rst = {} syn = {} ack ={}, fin = {},psh={}, seq_num ={},ack_num={},len={},data={},checksum={}'.format(
+        return 'send = {} rst = {} syn = {} ack ={}, fin = {},psh={}, seq_num ={},ack_num={},len={},data={},checksum={}'.format(
+            self.send,
             self.rst,
             self.syn,
             self.ack,
@@ -245,7 +248,7 @@ class socket(UDPsocket):
         self.is_server = False
         print("{} closed".format(self.to_addr))
 
-    def recv(self, bufsize):
+    def recv(self, bufsize=4096):
         print("start receive")
         expected_seq_num = self.ack_num
         recv_data = b''
@@ -290,14 +293,14 @@ class socket(UDPsocket):
         final_ack_num = send_data_len + self.seq_num
         for i in range(packet_num - 1):
             packet_i = packet()
-            packet_i.generate_send_packet(rst=0, ack=1, ack_num=self.ack_num, fin=0,
+            packet_i.generate_send_packet(send=1, rst=0, ack=1, ack_num=self.ack_num, fin=0,
                                           payload_len=self.max_payload_len,
                                           seq_num=self.seq_num + i * self.max_payload_len,
                                           payload=data[i * self.max_payload_len:(i + 1) * self.max_payload_len], psh=0,
                                           syn=0)
             packets.append(packet_i)
         packet_i = packet()
-        packet_i.generate_send_packet(rst=0, ack=1, ack_num=self.ack_num, fin=0,
+        packet_i.generate_send_packet(send=1, rst=0, ack=1, ack_num=self.ack_num, fin=0,
                                       payload_len=send_data_len - (packet_num - 1) * self.max_payload_len,
                                       seq_num=self.seq_num + (packet_num - 1) * self.max_payload_len,
                                       payload=data[(packet_num - 1) * self.max_payload_len:], psh=1,
@@ -308,6 +311,7 @@ class socket(UDPsocket):
         start_packet_num = 0
         cur_packet_num = 0
         while True:
+            # print("{} {}".format(self.next_seq_num, self.seq_num + send_data_len))
             if self.next_seq_num < self.base + self.window_size and self.next_seq_num <= self.seq_num + send_data_len:
                 self.sendto(packets[cur_packet_num].send_bytes, self.to_addr)
                 print("sender: send: " + str(packets[cur_packet_num]) + strftime("%Y-%m-%d %H:%M:%S",
@@ -315,9 +319,9 @@ class socket(UDPsocket):
                 if self.base == self.next_seq_num:
                     self.init_time = time()
                     self.is_timeout = False
-                self.next_seq_num += packets[cur_packet_num].payload_len
-                if cur_packet_num < packet_num - 1:
-                    cur_packet_num += 1
+                    self.next_seq_num += packets[cur_packet_num].payload_len
+                    if cur_packet_num < packet_num - 1:
+                        cur_packet_num += 1
                 # print("{} {}".format(self.next_seq_num, self.seq_num))
 
             try:
@@ -328,14 +332,15 @@ class socket(UDPsocket):
                     recv_packet.handle_recv_packet(recv_data)
                     print("sender: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
                                                                              localtime()))
-                    if recv_packet.checksum == 0 and addr == self.to_addr and not recv_packet.syn:
+                    if recv_packet.checksum == 0 and addr == self.to_addr:
                         ack_index = self.find_ack_index(packets, recv_packet)
                         if ack_index >= 0:
                             self.base = recv_packet.ack_num + recv_packet.payload_len
                             start_packet_num = ack_index + 1
                             print("sender: base: {} next seq {} final ack num: {}".format(self.base, self.next_seq_num,
                                                                                           final_ack_num))
-                            if recv_packet.ack_num == final_ack_num or self.base == final_ack_num:
+                            if (
+                                    recv_packet.ack_num == final_ack_num or self.base == final_ack_num):
                                 self.seq_num = self.next_seq_num
                                 break
                             else:
@@ -463,9 +468,10 @@ class socket(UDPsocket):
                                                     payload_len=0)
 
                 self.state = self.CLOSE_WAIT
-            elif recv_packet:
+            elif self.is_timeout:
+                self.init_time = time()
                 packet_to_sent = packet()
-                packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
+                packet_to_sent.generate_send_packet(b'', rst=0, psh=1, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
                                                     payload_len=0)
         elif self.state == self.FIN_WAIT_1:
@@ -476,7 +482,7 @@ class socket(UDPsocket):
                                                     payload_len=0)
 
                 self.state = self.CLOSING
-            elif fin and ack and recv_packet.ack_num == self.seq_num + 1:
+            elif fin and ack:
                 packet_to_sent = packet()
                 packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
@@ -496,6 +502,7 @@ class socket(UDPsocket):
 
         elif self.state == self.FIN_WAIT_2:
             if fin:
+                self.ack_num = recv_packet.seq_num + 1
                 packet_to_sent = packet()
                 packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
@@ -518,7 +525,7 @@ class socket(UDPsocket):
                                                 payload_len=0)
             self.state = self.LAST_ACK
         elif self.state == self.LAST_ACK:
-            if ack and not fin:
+            if ack and not fin and recv_packet.ack_num == self.seq_num + 1:
                 self.state = self.CLOSED
             elif rst:
                 self.state = self.CLOSED
