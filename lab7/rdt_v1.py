@@ -8,7 +8,6 @@ from udp import UDPsocket
 
 class packet:
     def __init__(self):
-        self.send = None
         self.rst = None
         self.head = None
         self.psh = None
@@ -28,7 +27,8 @@ class packet:
         else:
             return False
 
-    def generate_send_packet(self, payload: bytes, rst: int, psh: int, syn: int, fin: int, ack: int, seq_num: int,
+    def generate_send_packet(self, payload: bytes, rst: int, psh: int, syn: int, fin: int, ack: int,
+                             seq_num: int,
                              ack_num: int,
                              payload_len):
         self.rst = rst
@@ -137,7 +137,7 @@ class socket(UDPsocket):
         self.base = 0
         self.init_time = time()
 
-        self.max_delay_time = 0.5
+        self.max_delay_time = 0.2
         self.last_state = 0
         self.is_server = False
 
@@ -285,8 +285,6 @@ class socket(UDPsocket):
         send_data_len = len(data)
         packets = []
         packet_num = math.ceil(len(data) / self.max_payload_len)
-        if send_data_len == 0:
-            packet_num = 1
         final_ack_num = send_data_len + self.seq_num
         for i in range(packet_num - 1):
             packet_i = packet()
@@ -316,8 +314,7 @@ class socket(UDPsocket):
                     self.init_time = time()
                     self.is_timeout = False
                 self.next_seq_num += packets[cur_packet_num].payload_len
-                if cur_packet_num < packet_num - 1:
-                    cur_packet_num += 1
+                cur_packet_num += 1
                 # print("{} {}".format(self.next_seq_num, self.seq_num))
 
             try:
@@ -342,7 +339,7 @@ class socket(UDPsocket):
                                 self.init_time = time()
                                 self.is_timeout = False
             except BlockingIOError:
-                if self.base == final_ack_num and send_data_len != 0:
+                if self.base == final_ack_num:
                     # print("receiver: base: {} next seq{}".format(self.base, self.next_seq_num))
                     break
             if time() - self.init_time >= self.max_delay_time:
@@ -368,7 +365,6 @@ class socket(UDPsocket):
 
         packet_to_sent = None
         if time() - self.init_time > self.max_delay_time:
-            self.init_time = time()
             self.is_timeout = True
         else:
             self.is_timeout = False
@@ -456,18 +452,12 @@ class socket(UDPsocket):
 
                 self.state = self.FIN_WAIT_1
             elif fin:
-                self.ack_num += 1
                 packet_to_sent = packet()
                 packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
                                                     payload_len=0)
 
                 self.state = self.CLOSE_WAIT
-            elif recv_packet:
-                packet_to_sent = packet()
-                packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
-                                                    ack_num=self.ack_num,
-                                                    payload_len=0)
         elif self.state == self.FIN_WAIT_1:
             if fin and not ack:
                 packet_to_sent = packet()
@@ -476,21 +466,21 @@ class socket(UDPsocket):
                                                     payload_len=0)
 
                 self.state = self.CLOSING
-            elif fin and ack and recv_packet.ack_num == self.seq_num + 1:
+            elif fin and ack:
                 packet_to_sent = packet()
                 packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
                                                     payload_len=0)
 
                 self.state = self.TIME_WAIT
-            elif not fin and ack and recv_packet.seq_num == self.ack_num and recv_packet.ack_num == self.seq_num + 1:
+            elif not fin and ack and recv_packet.seq_num == self.ack_num:
                 self.state = self.FIN_WAIT_2
             elif rst:
                 self.state = self.CLOSED
             elif self.is_timeout:
                 self.init_time = time()
                 packet_to_sent = packet()
-                packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=1, seq_num=self.seq_num,
+                packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=0, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
                                                     payload_len=0)
 

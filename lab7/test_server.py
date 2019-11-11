@@ -4,15 +4,17 @@ from rdt import socket
 
 server = socket()
 server.bind(('127.0.0.1', 7654))
-# data = server.recv(4096)
-# server.sendto(data,('127.0.0.1'))
+num = 0
+
 while True:
     conn, client = server.accept()
     while True:
         data = conn.recv(4096)
         print(data)
-        conn.send(data)
+        # conn.send(data)
         conn.close()
+        num += 1
+        print(num)
         break
 
 # class file_server(threading.Thread):
