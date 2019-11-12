@@ -275,7 +275,7 @@ class socket(UDPsocket):
                         self.sendto(ack_packet.send_bytes, self.to_addr)
                         print("receiver: send: " + str(ack_packet) + strftime("%Y-%m-%d %H:%M:%S",
                                                                               localtime()))
-                        if recv_packet.psh:
+                        if recv_packet.psh and recv_packet.seq_num == expected_seq_num - recv_packet.payload_len:
                             break
             except BlockingIOError:
                 pass
@@ -311,7 +311,10 @@ class socket(UDPsocket):
         start_packet_num = 0
         cur_packet_num = 0
         while True:
-            # print("{} {}".format(self.next_seq_num, self.seq_num + send_data_len))
+            # print(
+            #     "base: {} next_seq {} final:{} strat:{} cur:{}".format(self.base, self.next_seq_num,
+            #                                                            self.seq_num + final_ack_num, start_packet_num,
+            #                                                            cur_packet_num))
             if self.next_seq_num < self.base + self.window_size and self.next_seq_num <= self.seq_num + send_data_len:
                 self.sendto(packets[cur_packet_num].send_bytes, self.to_addr)
                 print("sender: send: " + str(packets[cur_packet_num]) + strftime("%Y-%m-%d %H:%M:%S",
@@ -319,9 +322,9 @@ class socket(UDPsocket):
                 if self.base == self.next_seq_num:
                     self.init_time = time()
                     self.is_timeout = False
-                    self.next_seq_num += packets[cur_packet_num].payload_len
-                    if cur_packet_num < packet_num - 1:
-                        cur_packet_num += 1
+                self.next_seq_num += packets[cur_packet_num].payload_len
+                if cur_packet_num < packet_num - 1:
+                    cur_packet_num += 1
                 # print("{} {}".format(self.next_seq_num, self.seq_num))
 
             try:
@@ -332,7 +335,7 @@ class socket(UDPsocket):
                     recv_packet.handle_recv_packet(recv_data)
                     print("sender: received: " + str(recv_packet) + strftime("%Y-%m-%d %H:%M:%S",
                                                                              localtime()))
-                    if recv_packet.checksum == 0 and addr == self.to_addr:
+                    if recv_packet.checksum == 0 and addr == self.to_addr and not recv_packet.syn:
                         ack_index = self.find_ack_index(packets, recv_packet)
                         if ack_index >= 0:
                             self.base = recv_packet.ack_num + recv_packet.payload_len
@@ -353,8 +356,8 @@ class socket(UDPsocket):
             if time() - self.init_time >= self.max_delay_time:
                 self.init_time = time()
                 self.is_timeout = False
-                # print("time out")
-                for i in range(start_packet_num, cur_packet_num):
+                # print("time out: {} {}", start_packet_num, cur_packet_num)
+                for i in range(start_packet_num, cur_packet_num + 1):
                     self.sendto(packets[i].send_bytes, self.to_addr)
                     print("sender: time out send: " + str(packets[i]) + strftime("%Y-%m-%d %H:%M:%S",
                                                                                  localtime()))
@@ -496,7 +499,7 @@ class socket(UDPsocket):
             elif self.is_timeout:
                 self.init_time = time()
                 packet_to_sent = packet()
-                packet_to_sent.generate_send_packet(b'', rst=0, psh=0, syn=0, ack=1, fin=1, seq_num=self.seq_num,
+                packet_to_sent.generate_send_packet(b'', rst=0, psh=1, syn=0, ack=1, fin=1, seq_num=self.seq_num,
                                                     ack_num=self.ack_num,
                                                     payload_len=0)
 

@@ -3,29 +3,26 @@ import random, time
 
 
 class UDPsocket(socket):
-    def __init__(self, loss_rate=0.1, corruption_rate=0.3, delay_rate=0.1, delay=5):
+    def __init__(self, loss_rate=0.1, corruption_rate=0.3, delay_rate=0.1, delay=10):
         super().__init__(AF_INET, SOCK_DGRAM)
         self.loss_rate = loss_rate
         self.corruption_rate = corruption_rate
         self.delay_rate = delay_rate
         self.delay = delay
-        self.time_out = 0.1
+        self.settimeout(0.5)
 
-    def settimeout(self, value):
-        self.time_out = value
+    # def settimeout(self, value):
+    #     self.timeout = value
 
     def recvfrom(self, bufsize):
         if random.random() < self.delay_rate:
-            time.sleep(self.time_out)
-            # print("UDP DELAY")
+            time.sleep(self.timeout)
             return None
 
         data, addr = super().recvfrom(bufsize)
         if random.random() < self.loss_rate:
-            # print("UDP LOSS")
             return self.recvfrom(bufsize)
         if random.random() < self.corruption_rate:
-            # print("UDP ERROR")
             return self._corrupt(data), addr
         return data, addr
 

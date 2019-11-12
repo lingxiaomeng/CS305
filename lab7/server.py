@@ -1,16 +1,14 @@
-from socket import *
+import threading
 
-server = socket(AF_INET, SOCK_STREAM)
-server.bind(('127.0.0.1', 7777))
-server.listen(1)
+from rdt import socket
+
+server = socket()
+server.bind(('127.0.0.1', 7654))
+
 while True:
     conn, client = server.accept()
-    print(conn)
-    print(client)
     while True:
         data = conn.recv(4096)
-        if not data:
-            break
         print(data)
         conn.send(data)
         conn.close()

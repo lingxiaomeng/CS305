@@ -1,9 +1,14 @@
-from socket import *
+from rdt import socket
 
-client = socket(AF_INET, SOCK_STREAM)
-client.connect(("127.0.0.1", 7777))
-client.send(b'123456')
-data = client.recvfrom(2048)
-print(client)
-print(data)
+file = open('alice.txt', 'rb')
+new_file = open('recv_data.txt', 'wb+')
+new_file.flush()
+alice = file.read()
+client = socket()
+client.connect(('127.0.0.1', 7654))
+client.send(alice)
+data = client.recv()
+new_file.write(data)
 client.close()
+file.close()
+new_file.close()
