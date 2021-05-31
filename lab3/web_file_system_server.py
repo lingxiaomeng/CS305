@@ -1,7 +1,7 @@
 import mimetypes
 import os
 import random
-import rdt
+import socket
 import threading
 import time
 
@@ -171,7 +171,7 @@ class file_server(threading.Thread):
 if __name__ == "__main__":
     try:
         cookie_state = dict()
-        sock = rdt.socket(rdt.AF_INET, rdt.SOCK_STREAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind((server_path, 8080))  # 监听在8080端口
         sock.listen(10)
         while True:
